@@ -275,6 +275,9 @@ func cloneModelInfos(models []*ModelInfo) []*ModelInfo {
 //   - aistudio
 //   - codex
 //   - kimi
+//   - codebuddy
+//   - qoder
+//   - trae
 //   - antigravity
 //   - xai
 func GetStaticModelDefinitionsByChannel(channel string) []*ModelInfo {
@@ -292,6 +295,12 @@ func GetStaticModelDefinitionsByChannel(channel string) []*ModelInfo {
 		return GetCodexProModels()
 	case "kimi":
 		return GetKimiModels()
+	case "codebuddy":
+		return GetCodeBuddyModels()
+	case "qoder":
+		return GetQoderModels()
+	case "trae":
+		return GetTraeModels()
 	case "antigravity":
 		return GetAntigravityModels()
 	case "xai", "x-ai", "grok":

@@ -11,6 +11,8 @@ import (
 	"strings"
 
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/auth/codex"
+	qoderauth "github.com/router-for-me/CLIProxyAPI/v7/internal/auth/qoder"
+	traeauth "github.com/router-for-me/CLIProxyAPI/v7/internal/auth/trae"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
@@ -230,6 +232,26 @@ func synthesizeFileAuths(ctx *SynthesisContext, fullPath string, data []byte) ([
 					a.Attributes["plan_type"] = pt
 				}
 			}
+		}
+	}
+	if provider == "qoder" {
+		var storage qoderauth.QoderTokenStorage
+		if errStorage := json.Unmarshal(data, &storage); errStorage == nil {
+			if storage.Type == "" {
+				storage.Type = "qoder"
+			}
+			a.Storage = &storage
+		}
+	}
+	if provider == "trae" {
+		var storage traeauth.TokenStorage
+		if errStorage := json.Unmarshal(data, &storage); errStorage == nil {
+			if storage.Type == "" {
+				storage.Type = traeauth.Provider
+			}
+			storage.Edition = traeauth.NormalizeEdition(storage.Edition)
+			storage.SetMetadata(metadata)
+			a.Storage = &storage
 		}
 	}
 	return []*coreauth.Auth{a}, nil

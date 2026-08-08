@@ -111,6 +111,8 @@ PackyCode 为本软件用户提供了特别优惠：使用<a href="https://www.p
 - 新增 OpenAI Codex（GPT 系列）支持（OAuth 登录）
 - 新增 Claude Code 支持（OAuth 登录）
 - 新增 Grok Build 支持（OAuth 登录）
+- 原生支持 CodeBuddy 和 Qoder（OAuth 登录）
+- 原生支持 Trae CLI PAT/raw-chat，并兼容导入 Trae IDE 凭据
 - 支持流式、非流式响应，以及受支持场景下的 WebSocket 响应
 - 函数调用/工具支持
 - 多模态输入（文本、图片）
@@ -127,6 +129,21 @@ PackyCode 为本软件用户提供了特别优惠：使用<a href="https://www.p
 ## 新手入门
 
 CLIProxyAPI 用户手册： [https://help.router-for.me/](https://help.router-for.me/cn/)
+
+### CodeBuddy、Qoder 和 Trae
+
+使用内置命令模式在配置的 `auth-dir` 中生成凭据：
+
+```bash
+./cli-proxy-api --codebuddy-login
+./cli-proxy-api --qoder-login
+./cli-proxy-api --trae-login
+./cli-proxy-api --trae-import "/path/to/Trae/User/globalStorage/storage.json"
+```
+
+`--trae-login` 会提示输入 Trae CLI 个人访问令牌，也可读取 `TRAECLI_PERSONAL_ACCESS_TOKEN`。服务会用 PAT 换取 Cloud IDE JWT，并通过 Trae CLI 的 `/api/ide/v2/llm_raw_chat` 协议请求模型。管理 API 对应入口为 `POST /v0/management/trae-auth`，请求体为 `{"pat":"..."}`。
+
+IDE 导入继续保留用于兼容。Trae 通常会根据 `storage.json` 路径自动判断版本；需要手动指定时，可使用 `--trae-edition cn`、`sg`、`solo` 或 `solo-sg`。管理 API 可通过 `POST /v0/management/trae/import` 上传 `storage.json`。
 
 ## 管理 API 文档
 

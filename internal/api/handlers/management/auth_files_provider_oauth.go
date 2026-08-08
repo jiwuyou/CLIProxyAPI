@@ -18,10 +18,12 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/auth/claude"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/auth/codex"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/auth/kimi"
+	qoderauth "github.com/router-for-me/CLIProxyAPI/v7/internal/auth/qoder"
 	xaiauth "github.com/router-for-me/CLIProxyAPI/v7/internal/auth/xai"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/misc"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/pluginhost"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/util"
+	sdkAuth "github.com/router-for-me/CLIProxyAPI/v7/sdk/auth"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
 	log "github.com/sirupsen/logrus"
@@ -715,6 +717,109 @@ func (h *Handler) RequestKimiToken(c *gin.Context) {
 		response["expires_in"] = deviceFlow.ExpiresIn
 	}
 	c.JSON(200, response)
+}
+
+// RequestQoderToken starts Qoder's device authorization flow and saves the
+// resulting credential after the user approves the browser prompt.
+func (h *Handler) RequestQoderToken(c *gin.Context) {
+	ctx := PopulateAuthContext(context.Background(), c)
+	state := fmt.Sprintf("qod-%d", time.Now().UnixNano())
+	authService := qoderauth.NewQoderAuth(h.cfg)
+
+	deviceFlow, err := authService.InitiateDeviceFlow(ctx)
+	if err != nil {
+		log.Errorf("failed to initialize Qoder authentication: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to initialize Qoder authentication"})
+		return
+	}
+
+	RegisterOAuthSession(state, "qoder")
+	go func() {
+		tokenData, errPoll := authService.PollForToken(ctx, deviceFlow)
+		if errPoll != nil {
+			SetOAuthSessionError(state, "Authentication failed")
+			log.Errorf("Qoder authentication failed: %v", errPoll)
+			return
+		}
+
+		storage := authService.CreateTokenStorage(tokenData, deviceFlow.MachineID)
+		name, email := authService.SaveUserInfo(ctx, tokenData.AccessToken, tokenData.UserID, "", "")
+		storage.Name = strings.TrimSpace(name)
+		storage.Email = strings.TrimSpace(email)
+		if storage.Email == "" {
+			storage.Email = strings.TrimSpace(tokenData.UserID)
+		}
+		if storage.Email == "" {
+			storage.Email = fmt.Sprintf("user-%d", time.Now().UnixMilli())
+		}
+
+		fileName := fmt.Sprintf("qoder-%s.json", storage.Email)
+		label := storage.Name
+		if label == "" {
+			label = storage.Email
+		}
+		record := &coreauth.Auth{
+			ID:       fileName,
+			Provider: "qoder",
+			FileName: fileName,
+			Label:    label,
+			Storage:  storage,
+			Metadata: map[string]any{"email": storage.Email},
+		}
+		if _, errSave := h.saveTokenRecord(ctx, record); errSave != nil {
+			SetOAuthSessionError(state, "Failed to save authentication tokens")
+			log.Errorf("failed to save Qoder authentication tokens: %v", errSave)
+			return
+		}
+
+		CompleteOAuthSession(state)
+		CompleteOAuthSessionsByProvider("qoder")
+	}()
+
+	c.JSON(http.StatusOK, gin.H{
+		"status": "ok",
+		"url":    deviceFlow.VerificationURIComplete,
+		"state":  state,
+	})
+}
+
+// LoginTrae exchanges a Trae CLI personal access token and persists the
+// resulting Cloud IDE JWT. The PAT remains in the auth file for automatic JWT renewal.
+func (h *Handler) LoginTrae(c *gin.Context) {
+	var payload struct {
+		PAT     string `json:"pat"`
+		BaseURL string `json:"base_url"`
+	}
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"status": "error", "error": "invalid request body"})
+		return
+	}
+	payload.PAT = strings.TrimSpace(payload.PAT)
+	if payload.PAT == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"status": "error", "error": "pat is required"})
+		return
+	}
+	ctx := PopulateAuthContext(context.Background(), c)
+	authenticator := sdkAuth.NewTraeAuthenticator()
+	record, err := authenticator.Login(ctx, h.cfg, &sdkAuth.LoginOptions{Metadata: map[string]string{
+		"pat":      payload.PAT,
+		"base_url": strings.TrimSpace(payload.BaseURL),
+	}})
+	if err != nil {
+		log.Errorf("Trae CLI authentication failed: %v", err)
+		c.JSON(http.StatusBadGateway, gin.H{"status": "error", "error": err.Error()})
+		return
+	}
+	savedPath, err := h.saveTokenRecord(ctx, record)
+	if err != nil {
+		log.Errorf("failed to save Trae CLI authentication: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "error": "failed to save authentication"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"status":    "ok",
+		"auth_file": filepath.Base(savedPath),
+	})
 }
 
 // watchOAuthSessionCancel cancels pollCtx once the OAuth session is no longer pending.

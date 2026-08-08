@@ -14,6 +14,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	qoderauth "github.com/router-for-me/CLIProxyAPI/v7/internal/auth/qoder"
+	traeauth "github.com/router-for-me/CLIProxyAPI/v7/internal/auth/trae"
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
 )
@@ -346,6 +348,30 @@ func (s *FileTokenStore) readAuthFiles(path, baseDir string) ([]*cliproxyauth.Au
 	}
 	if email, ok := metadata["email"].(string); ok && email != "" {
 		auth.Attributes["email"] = email
+	}
+	if provider == "qoder" {
+		var storage qoderauth.QoderTokenStorage
+		if raw, errMarshal := json.Marshal(metadata); errMarshal == nil {
+			if errUnmarshal := json.Unmarshal(raw, &storage); errUnmarshal == nil {
+				if strings.TrimSpace(storage.Type) == "" {
+					storage.Type = "qoder"
+				}
+				auth.Storage = &storage
+			}
+		}
+	}
+	if provider == "trae" {
+		var storage traeauth.TokenStorage
+		if raw, errMarshal := json.Marshal(metadata); errMarshal == nil {
+			if errUnmarshal := json.Unmarshal(raw, &storage); errUnmarshal == nil {
+				if strings.TrimSpace(storage.Type) == "" {
+					storage.Type = traeauth.Provider
+				}
+				storage.Edition = traeauth.NormalizeEdition(storage.Edition)
+				storage.SetMetadata(metadata)
+				auth.Storage = &storage
+			}
+		}
 	}
 	cliproxyauth.ApplyCustomHeadersFromMetadata(auth)
 	return []*cliproxyauth.Auth{auth}, nil

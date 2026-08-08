@@ -111,6 +111,8 @@ PackyCode provides special discounts for our software users: register using <a h
 - OpenAI Codex support (GPT models) via OAuth login
 - Claude Code support via OAuth login
 - Grok Build support via OAuth login
+- Native CodeBuddy and Qoder support via OAuth login
+- Native Trae CLI PAT/raw-chat support, with IDE credential import compatibility
 - Streaming, non-streaming, and WebSocket responses where supported
 - Function calling/tools support
 - Multimodal input support (text and images)
@@ -127,6 +129,21 @@ PackyCode provides special discounts for our software users: register using <a h
 ## Getting Started
 
 CLIProxyAPI Guides: [https://help.router-for.me/](https://help.router-for.me/)
+
+### CodeBuddy, Qoder, and Trae
+
+Use the built-in command modes to create credentials in the configured `auth-dir`:
+
+```bash
+./cli-proxy-api --codebuddy-login
+./cli-proxy-api --qoder-login
+./cli-proxy-api --trae-login
+./cli-proxy-api --trae-import "/path/to/Trae/User/globalStorage/storage.json"
+```
+
+`--trae-login` prompts for a Trae CLI personal access token, or reads `TRAECLI_PERSONAL_ACCESS_TOKEN`. It exchanges the PAT for a Cloud IDE JWT and uses Trae CLI's `/api/ide/v2/llm_raw_chat` transport. The management API provides the same flow through `POST /v0/management/trae-auth` with `{"pat":"..."}`.
+
+The IDE import remains available for compatibility. Its edition is normally inferred from the storage path; override it with `--trae-edition cn`, `sg`, `solo`, or `solo-sg`. The management API accepts an uploaded `storage.json` at `POST /v0/management/trae/import`.
 
 ## Management API
 
