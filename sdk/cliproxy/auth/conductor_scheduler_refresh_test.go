@@ -41,6 +41,82 @@ type unauthorizedRefreshTestExecutor struct {
 	schedulerProviderTestExecutor
 }
 
+type blockingRefreshTestExecutor struct {
+	schedulerProviderTestExecutor
+	started chan struct{}
+	release chan struct{}
+}
+
+func (e *blockingRefreshTestExecutor) Refresh(_ context.Context, auth *Auth) (*Auth, error) {
+	close(e.started)
+	<-e.release
+	auth.Metadata["access_token"] = "refreshed-token"
+	return auth, nil
+}
+
+func TestManager_RefreshPreservesConcurrentDisabledChange(t *testing.T) {
+	ctx := context.Background()
+	manager := NewManager(nil, &RoundRobinSelector{}, nil)
+	executor := &blockingRefreshTestExecutor{
+		schedulerProviderTestExecutor: schedulerProviderTestExecutor{provider: "refresh-status-race"},
+		started:                       make(chan struct{}),
+		release:                       make(chan struct{}),
+	}
+	manager.RegisterExecutor(executor)
+
+	auth := &Auth{
+		ID:            "refresh-status-race-auth",
+		Provider:      executor.Identifier(),
+		Disabled:      true,
+		Status:        StatusDisabled,
+		StatusMessage: "disabled via management API",
+		Metadata: map[string]any{
+			"access_token": "old-token",
+			"disabled":     true,
+		},
+	}
+	if _, errRegister := manager.Register(ctx, auth); errRegister != nil {
+		t.Fatalf("register auth: %v", errRegister)
+	}
+
+	refreshDone := make(chan error, 1)
+	go func() {
+		_, errRefresh := manager.refreshAuthForRequest(ctx, auth.ID, "")
+		refreshDone <- errRefresh
+	}()
+	<-executor.started
+
+	current, ok := manager.GetByID(auth.ID)
+	if !ok {
+		t.Fatalf("auth %q disappeared during refresh", auth.ID)
+	}
+	current.Disabled = false
+	current.Status = StatusActive
+	current.StatusMessage = ""
+	current.Metadata["disabled"] = false
+	if _, errUpdate := manager.Update(ctx, current); errUpdate != nil {
+		t.Fatalf("enable auth: %v", errUpdate)
+	}
+	close(executor.release)
+	if errRefresh := <-refreshDone; errRefresh != nil {
+		t.Fatalf("refresh auth: %v", errRefresh)
+	}
+
+	updated, ok := manager.GetByID(auth.ID)
+	if !ok {
+		t.Fatalf("auth %q missing after refresh", auth.ID)
+	}
+	if updated.Disabled || updated.Status != StatusActive {
+		t.Fatalf("disabled/status = %v/%s, want false/active", updated.Disabled, updated.Status)
+	}
+	if disabled, _ := updated.Metadata["disabled"].(bool); disabled {
+		t.Fatalf("metadata disabled = true, want false")
+	}
+	if updated.Metadata["access_token"] != "refreshed-token" {
+		t.Fatalf("access token = %#v, want refreshed-token", updated.Metadata["access_token"])
+	}
+}
+
 func (e unauthorizedRefreshTestExecutor) Refresh(ctx context.Context, auth *Auth) (*Auth, error) {
 	return nil, errors.New("token refresh failed with status 401: invalid_grant")
 }

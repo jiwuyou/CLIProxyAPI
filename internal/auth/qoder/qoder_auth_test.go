@@ -400,6 +400,13 @@ func TestCreateTokenStorage(t *testing.T) {
 	if storage.MachineID != "machine123" {
 		t.Errorf("MachineID = %q, want %q", storage.MachineID, "machine123")
 	}
+	wantExpired := time.UnixMilli(tokenData.ExpireTime).Format(time.RFC3339)
+	if storage.Expired != wantExpired {
+		t.Errorf("Expired = %q, want %q", storage.Expired, wantExpired)
+	}
+	if _, err := time.Parse(time.RFC3339, storage.LastRefresh); err != nil {
+		t.Errorf("LastRefresh = %q, want RFC3339: %v", storage.LastRefresh, err)
+	}
 	// Type is set when saving to file, not in CreateTokenStorage
 	if storage.Type != "" {
 		t.Errorf("Type = %q, want empty", storage.Type)
@@ -428,6 +435,9 @@ func TestUpdateTokenStorage(t *testing.T) {
 	}
 	if storage.ExpireTime != 2000 {
 		t.Errorf("ExpireTime = %d, want %d", storage.ExpireTime, 2000)
+	}
+	if storage.Expired != time.UnixMilli(2000).Format(time.RFC3339) {
+		t.Errorf("Expired = %q, want converted ExpireTime", storage.Expired)
 	}
 }
 

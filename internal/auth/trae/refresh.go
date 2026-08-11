@@ -50,7 +50,7 @@ func ExchangePAT(ctx context.Context, cfg *config.Config, pat, baseURL string) (
 	if token == "" {
 		return nil, fmt.Errorf("trae: PAT exchange response did not contain Data.Token")
 	}
-	return &TokenStorage{
+	storage := &TokenStorage{
 		Type:                Provider,
 		AuthKind:            AuthKindPAT,
 		Edition:             EditionCN,
@@ -59,7 +59,9 @@ func ExchangePAT(ctx context.Context, cfg *config.Config, pat, baseURL string) (
 		ExpiredAt:           normalizeExpiryValue(firstValue(result, "TokenExpireAt", "tokenExpireAt", "expiredAt", "expired")),
 		AuthBaseURL:         baseURL,
 		ChatBaseURL:         baseURL,
-	}, nil
+	}
+	storage.LastRefresh = time.Now().UTC().Format(time.RFC3339)
+	return storage, nil
 }
 
 // Refresh obtains a fresh token for either a CLI PAT or an imported IDE credential.
@@ -116,6 +118,7 @@ func Refresh(ctx context.Context, cfg *config.Config, storage *TokenStorage) (*T
 	if refreshExpired := firstValue(result, "RefreshTokenExpireAt", "refreshTokenExpireAt", "refreshExpiredAt"); refreshExpired != nil {
 		updated.RefreshExpiredAt = normalizeExpiryValue(refreshExpired)
 	}
+	updated.LastRefresh = time.Now().UTC().Format(time.RFC3339)
 	return &updated, nil
 }
 

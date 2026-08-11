@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/misc"
 )
@@ -22,6 +23,8 @@ type CodeBuddyTokenStorage struct {
 	RefreshToken string `json:"refresh_token"`
 	// ExpiresIn is the number of seconds until the access token expires.
 	ExpiresIn int64 `json:"expires_in"`
+	// Expired is the absolute access-token expiration timestamp.
+	Expired string `json:"expired,omitempty"`
 	// RefreshExpiresIn is the number of seconds until the refresh token expires.
 	RefreshExpiresIn int64 `json:"refresh_expires_in,omitempty"`
 	// TokenType is the type of token, typically "bearer".
@@ -32,6 +35,31 @@ type CodeBuddyTokenStorage struct {
 	UserID string `json:"user_id"`
 	// Type indicates the authentication provider type, always "codebuddy" for this storage.
 	Type string `json:"type"`
+	// LastRefresh is the timestamp of the most recent successful token acquisition.
+	LastRefresh string `json:"last_refresh,omitempty"`
+
+	// Metadata holds generic auth-file fields that are flattened during serialization.
+	Metadata map[string]any `json:"-"`
+}
+
+// SetMetadata preserves generic auth-file fields such as disabled and headers.
+func (s *CodeBuddyTokenStorage) SetMetadata(metadata map[string]any) {
+	if s == nil {
+		return
+	}
+	s.Metadata = metadata
+}
+
+// MarkRefreshed records the absolute expiry and successful acquisition time.
+func (s *CodeBuddyTokenStorage) MarkRefreshed(now time.Time) {
+	if s == nil {
+		return
+	}
+	now = now.UTC()
+	s.LastRefresh = now.Format(time.RFC3339)
+	if s.ExpiresIn > 0 {
+		s.Expired = now.Add(time.Duration(s.ExpiresIn) * time.Second).Format(time.RFC3339)
+	}
 }
 
 // SaveTokenToFile serializes the CodeBuddy token storage to a JSON file.
@@ -50,6 +78,11 @@ func (s *CodeBuddyTokenStorage) SaveTokenToFile(authFilePath string) error {
 		return fmt.Errorf("failed to create directory: %w", err)
 	}
 
+	data, errMerge := misc.MergeMetadata(s, s.Metadata)
+	if errMerge != nil {
+		return fmt.Errorf("failed to merge metadata: %w", errMerge)
+	}
+
 	f, err := os.OpenFile(authFilePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
 		return fmt.Errorf("failed to create token file: %w", err)
@@ -58,7 +91,7 @@ func (s *CodeBuddyTokenStorage) SaveTokenToFile(authFilePath string) error {
 		_ = f.Close()
 	}()
 
-	if err = json.NewEncoder(f).Encode(s); err != nil {
+	if err = json.NewEncoder(f).Encode(data); err != nil {
 		return fmt.Errorf("failed to write token to file: %w", err)
 	}
 	return nil

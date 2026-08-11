@@ -42,6 +42,9 @@ func TestExchangePAT(t *testing.T) {
 	if storage.AuthBaseURL != server.URL || storage.ChatBaseURL != server.URL || storage.ExpiredAt == "" {
 		t.Fatalf("unexpected endpoints or expiry: %#v", storage)
 	}
+	if _, err = time.Parse(time.RFC3339, storage.LastRefresh); err != nil {
+		t.Fatalf("LastRefresh = %q, want RFC3339: %v", storage.LastRefresh, err)
+	}
 }
 
 func TestRefreshPATUsesPersonalAccessToken(t *testing.T) {
@@ -62,5 +65,8 @@ func TestRefreshPATUsesPersonalAccessToken(t *testing.T) {
 	}
 	if updated.Token != "jwt-new" || updated.PersonalAccessToken != "trae-lt-test" || !updated.UsesCLIRawChat() {
 		t.Fatalf("unexpected refreshed storage: %#v", updated)
+	}
+	if _, err = time.Parse(time.RFC3339, updated.LastRefresh); err != nil {
+		t.Fatalf("LastRefresh = %q, want RFC3339: %v", updated.LastRefresh, err)
 	}
 }

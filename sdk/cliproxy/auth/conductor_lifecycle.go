@@ -118,6 +118,20 @@ func (m *Manager) Update(ctx context.Context, auth *Auth) (*Auth, error) {
 		auth.Index = existing.Index
 		auth.indexAssigned = existing.indexAssigned
 	}
+	if shouldPreserveOperatorStatus(ctx) {
+		auth.Disabled = existing.Disabled
+		if auth.Metadata == nil {
+			auth.Metadata = make(map[string]any)
+		}
+		auth.Metadata["disabled"] = existing.Disabled
+		if existing.Disabled {
+			auth.Status = StatusDisabled
+			auth.StatusMessage = existing.StatusMessage
+		} else if auth.Status == StatusDisabled {
+			auth.Status = StatusActive
+			auth.StatusMessage = ""
+		}
+	}
 	auth.Success = existing.Success
 	auth.Failed = existing.Failed
 	auth.recentRequests = existing.recentRequests

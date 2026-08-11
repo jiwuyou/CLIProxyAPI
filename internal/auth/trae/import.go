@@ -97,6 +97,7 @@ func ParseCredentialJSON(raw []byte, edition string) (*TokenStorage, error) {
 		Username:         firstString(value, "username", "userName", "name"),
 		ExpiredAt:        firstString(value, "expiredAt", "expired", "tokenExpireAt", "TokenExpireAt"),
 		RefreshExpiredAt: firstString(value, "refreshExpiredAt", "refresh_expired", "RefreshTokenExpireAt"),
+		LastRefresh:      firstString(value, "lastRefresh", "last_refresh", "lastRefreshedAt"),
 		AuthBaseURL:      firstString(value, "host", "authBaseUrl", "auth_base_url"),
 		ChatBaseURL:      firstString(value, "chatBaseUrl", "chat_base_url"),
 	}

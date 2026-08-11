@@ -394,7 +394,8 @@ func (qa *QoderAuth) CreateTokenStorage(tokenData *QoderTokenData, machineID str
 		RefreshToken: tokenData.RefreshToken,
 		UserID:       tokenData.UserID,
 		ExpireTime:   tokenData.ExpireTime,
-		LastRefresh:  time.Now().Format(time.RFC3339),
+		Expired:      formatExpiresAt(tokenData.ExpireTime),
+		LastRefresh:  time.Now().UTC().Format(time.RFC3339),
 		MachineID:    machineID,
 		MachineToken: tokenData.MachineToken,
 		MachineType:  tokenData.MachineType,
@@ -408,7 +409,8 @@ func (qa *QoderAuth) UpdateTokenStorage(storage *QoderTokenStorage, tokenData *Q
 	storage.Token = tokenData.AccessToken
 	storage.RefreshToken = tokenData.RefreshToken
 	storage.ExpireTime = tokenData.ExpireTime
-	storage.LastRefresh = time.Now().Format(time.RFC3339)
+	storage.Expired = formatExpiresAt(tokenData.ExpireTime)
+	storage.LastRefresh = time.Now().UTC().Format(time.RFC3339)
 }
 
 // RefreshTokensWithRetry attempts to refresh tokens with a specified number of retries upon failure

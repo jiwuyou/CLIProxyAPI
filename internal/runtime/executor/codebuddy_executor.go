@@ -329,6 +329,8 @@ func (e *CodeBuddyExecutor) Refresh(ctx context.Context, auth *cliproxyauth.Auth
 		updated.Metadata["refresh_token"] = storage.RefreshToken
 	}
 	updated.Metadata["expires_in"] = storage.ExpiresIn
+	updated.Metadata["expired"] = storage.Expired
+	updated.Metadata["last_refresh"] = storage.LastRefresh
 	updated.Metadata["domain"] = storage.Domain
 	if storage.UserID != "" {
 		updated.Metadata["user_id"] = storage.UserID

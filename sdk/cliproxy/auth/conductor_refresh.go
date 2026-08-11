@@ -581,7 +581,9 @@ func (m *Manager) refreshAuthForRequest(ctx context.Context, id, failedAccessTok
 	if m.shouldRefresh(updated, now) {
 		updated.NextRefreshAfter = now.Add(refreshIneffectiveBackoff)
 	}
-	saved, errUpdate := m.Update(ctx, updated)
+	// Refresh works on a snapshot; merge operator-controlled status atomically
+	// with the latest manager state when committing the refreshed credential.
+	saved, errUpdate := m.Update(withPreservedOperatorStatus(ctx), updated)
 	for _, model := range modelsToResume {
 		registry.GetGlobalRegistry().ResumeClientModel(id, model)
 	}

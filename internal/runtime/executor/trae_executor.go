@@ -257,6 +257,7 @@ func (e *TraeExecutor) Refresh(ctx context.Context, auth *cliproxyauth.Auth) (*c
 	updated.Metadata["refresh_token"] = updatedStorage.RefreshToken
 	updated.Metadata["expired"] = updatedStorage.ExpiredAt
 	updated.Metadata["refresh_expired"] = updatedStorage.RefreshExpiredAt
+	updated.Metadata["last_refresh"] = updatedStorage.LastRefresh
 	updated.Metadata["auth_base_url"] = updatedStorage.AuthBaseURL
 	updated.Metadata["chat_base_url"] = updatedStorage.ChatBaseURL
 	now := time.Now()

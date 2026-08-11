@@ -95,6 +95,9 @@ func newTraeAuthRecord(storage *traeauth.TokenStorage, label, fallback string) *
 		return nil
 	}
 	storage.AuthKind = traeauth.NormalizeAuthKind(storage.AuthKind, storage.PersonalAccessToken)
+	if strings.TrimSpace(storage.LastRefresh) == "" {
+		storage.LastRefresh = time.Now().UTC().Format(time.RFC3339)
+	}
 	label = strings.TrimSpace(label)
 	if label == "" {
 		label = fmt.Sprintf("%s-%d", fallback, time.Now().UnixMilli())
@@ -121,6 +124,7 @@ func newTraeAuthRecord(storage *traeauth.TokenStorage, label, fallback string) *
 		"username":              storage.Username,
 		"expired":               storage.ExpiredAt,
 		"refresh_expired":       storage.RefreshExpiredAt,
+		"last_refresh":          storage.LastRefresh,
 		"auth_base_url":         storage.AuthBaseURL,
 		"chat_base_url":         storage.ChatBaseURL,
 	}

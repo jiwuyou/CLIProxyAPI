@@ -26,14 +26,9 @@ func (a *QoderAuthenticator) Provider() string {
 }
 
 func (a *QoderAuthenticator) RefreshLead() *time.Duration {
-	// Qoder device tokens are long-lived (~30 days), and we don't have
-	// a working refresh path (see QoderExecutor.Refresh comment). Use a
-	// short non-zero lead so the auto-refresh loop still revisits the
-	// auth periodically - but never within the same minute it just ran.
-	// Returning nil disables scheduled refresh entirely; we keep a
-	// nominal 24h lead so admins can observe through the management API.
-	d := 24 * time.Hour
-	return &d
+	// Qoder device tokens cannot be refreshed with the available device-flow
+	// credentials. Scheduling a no-op refresh would only rewrite the auth file.
+	return nil
 }
 
 func (a *QoderAuthenticator) Login(ctx context.Context, cfg *config.Config, opts *LoginOptions) (*coreauth.Auth, error) {
@@ -113,9 +108,14 @@ func (a *QoderAuthenticator) Login(ctx context.Context, cfg *config.Config, opts
 	// Generate file name
 	fileName := fmt.Sprintf("qoder-%s.json", label)
 	metadata := map[string]any{
-		"email":   label,
-		"name":    name,
-		"user_id": tokenData.UserID,
+		"type":         "qoder",
+		"auth_kind":    "oauth",
+		"email":        label,
+		"name":         name,
+		"user_id":      tokenData.UserID,
+		"expire_time":  tokenStorage.ExpireTime,
+		"expired":      tokenStorage.Expired,
+		"last_refresh": tokenStorage.LastRefresh,
 	}
 
 	fmt.Println("Qoder authentication successful")

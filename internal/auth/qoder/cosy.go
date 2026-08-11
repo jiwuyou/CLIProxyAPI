@@ -379,7 +379,10 @@ func generateMachineID() string {
 
 // formatExpiresAt converts milliseconds epoch to RFC3339 format
 func formatExpiresAt(expireMs int64) string {
-	return time.Unix(0, expireMs*int64(time.Millisecond)).Format(time.RFC3339)
+	if expireMs <= 0 {
+		return ""
+	}
+	return time.Unix(0, expireMs*int64(time.Millisecond)).UTC().Format(time.RFC3339)
 }
 
 // parseExpiresAt converts a Qoder upstream expiry hint into Unix

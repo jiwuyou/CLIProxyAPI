@@ -770,7 +770,14 @@ func (h *Handler) RequestQoderToken(c *gin.Context) {
 			FileName: fileName,
 			Label:    label,
 			Storage:  storage,
-			Metadata: map[string]any{"email": storage.Email},
+			Metadata: map[string]any{
+				"type":         "qoder",
+				"auth_kind":    "oauth",
+				"email":        storage.Email,
+				"expire_time":  storage.ExpireTime,
+				"expired":      storage.Expired,
+				"last_refresh": storage.LastRefresh,
+			},
 		}
 		if _, errSave := h.saveTokenRecord(ctx, record); errSave != nil {
 			SetOAuthSessionError(state, "Failed to save authentication tokens")
@@ -846,11 +853,15 @@ func (h *Handler) requestCodeBuddyToken(c *gin.Context, authService codeBuddyOAu
 			Label:    userID,
 			Storage:  storage,
 			Metadata: map[string]any{
+				"type":          "codebuddy",
+				"auth_kind":     "oauth",
 				"access_token":  storage.AccessToken,
 				"refresh_token": storage.RefreshToken,
 				"user_id":       storage.UserID,
 				"domain":        storage.Domain,
 				"expires_in":    storage.ExpiresIn,
+				"expired":       storage.Expired,
+				"last_refresh":  storage.LastRefresh,
 			},
 		}
 		if _, errSave := h.saveTokenRecord(pollCtx, record); errSave != nil {

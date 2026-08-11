@@ -85,11 +85,15 @@ func (a CodeBuddyAuthenticator) Login(ctx context.Context, cfg *config.Config, o
 		Label:    label,
 		Storage:  storage,
 		Metadata: map[string]any{
+			"type":          "codebuddy",
+			"auth_kind":     "oauth",
 			"access_token":  storage.AccessToken,
 			"refresh_token": storage.RefreshToken,
 			"user_id":       storage.UserID,
 			"domain":        storage.Domain,
 			"expires_in":    storage.ExpiresIn,
+			"expired":       storage.Expired,
+			"last_refresh":  storage.LastRefresh,
 		},
 	}, nil
 }

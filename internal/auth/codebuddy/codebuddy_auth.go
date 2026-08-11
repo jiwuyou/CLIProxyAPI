@@ -202,7 +202,7 @@ func (a *CodeBuddyAuth) PollForToken(ctx context.Context, state string) (*CodeBu
 				return nil, fmt.Errorf("%w: empty data in response", ErrTokenFetchFailed)
 			}
 			userID, _ := a.DecodeUserID(result.Data.AccessToken)
-			return &CodeBuddyTokenStorage{
+			storage := &CodeBuddyTokenStorage{
 				AccessToken:  result.Data.AccessToken,
 				RefreshToken: result.Data.RefreshToken,
 				ExpiresIn:    result.Data.ExpiresIn,
@@ -210,7 +210,9 @@ func (a *CodeBuddyAuth) PollForToken(ctx context.Context, state string) (*CodeBu
 				Domain:       result.Data.Domain,
 				UserID:       userID,
 				Type:         "codebuddy",
-			}, nil
+			}
+			storage.MarkRefreshed(time.Now())
+			return storage, nil
 		case codeLoginPending:
 			// continue polling
 		default:
@@ -324,7 +326,7 @@ func (a *CodeBuddyAuth) RefreshToken(ctx context.Context, accessToken, refreshTo
 		tokenDomain = domain
 	}
 
-	return &CodeBuddyTokenStorage{
+	storage := &CodeBuddyTokenStorage{
 		AccessToken:      result.Data.AccessToken,
 		RefreshToken:     result.Data.RefreshToken,
 		ExpiresIn:        result.Data.ExpiresIn,
@@ -333,7 +335,9 @@ func (a *CodeBuddyAuth) RefreshToken(ctx context.Context, accessToken, refreshTo
 		Domain:           tokenDomain,
 		UserID:           newUserID,
 		Type:             "codebuddy",
-	}, nil
+	}
+	storage.MarkRefreshed(time.Now())
+	return storage, nil
 }
 
 func (a *CodeBuddyAuth) applyPollHeaders(req *http.Request) {

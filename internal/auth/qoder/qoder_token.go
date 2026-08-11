@@ -27,6 +27,8 @@ type QoderTokenStorage struct {
 	Email string `json:"email"`
 	// ExpireTime is the timestamp when the current access token expires (milliseconds epoch).
 	ExpireTime int64 `json:"expire_time"`
+	// Expired is the RFC3339 representation consumed by the shared refresh scheduler.
+	Expired string `json:"expired,omitempty"`
 	// Type indicates the authentication provider type, always "qoder" for this storage.
 	Type string `json:"type"`
 	// LastRefresh is the timestamp of the last token refresh operation.

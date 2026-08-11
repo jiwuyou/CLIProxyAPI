@@ -43,6 +43,7 @@ type TokenStorage struct {
 	Username            string         `json:"username,omitempty"`
 	ExpiredAt           string         `json:"expired,omitempty"`
 	RefreshExpiredAt    string         `json:"refresh_expired,omitempty"`
+	LastRefresh         string         `json:"last_refresh,omitempty"`
 	AuthBaseURL         string         `json:"auth_base_url,omitempty"`
 	ChatBaseURL         string         `json:"chat_base_url,omitempty"`
 	Metadata            map[string]any `json:"-"`
@@ -82,6 +83,7 @@ func (s *TokenStorage) SaveTokenToFile(path string) error {
 		"username":              s.Username,
 		"expired":               s.ExpiredAt,
 		"refresh_expired":       s.RefreshExpiredAt,
+		"last_refresh":          s.LastRefresh,
 		"auth_base_url":         s.AuthBaseURL,
 		"chat_base_url":         s.ChatBaseURL,
 	}
