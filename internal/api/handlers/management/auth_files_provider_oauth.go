@@ -16,6 +16,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/auth/antigravity"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/auth/claude"
+	codebuddyauth "github.com/router-for-me/CLIProxyAPI/v7/internal/auth/codebuddy"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/auth/codex"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/auth/kimi"
 	qoderauth "github.com/router-for-me/CLIProxyAPI/v7/internal/auth/qoder"
@@ -33,6 +34,11 @@ type codexOAuthService interface {
 	GenerateAuthURL(state string, pkceCodes *codex.PKCECodes) (string, error)
 	ExchangeCodeForTokens(ctx context.Context, code string, pkceCodes *codex.PKCECodes) (*codex.CodexAuthBundle, error)
 	CreateTokenStorage(bundle *codex.CodexAuthBundle) *codex.CodexTokenStorage
+}
+
+type codeBuddyOAuthService interface {
+	FetchAuthState(context.Context) (*codebuddyauth.AuthState, error)
+	PollForToken(context.Context, string) (*codebuddyauth.CodeBuddyTokenStorage, error)
 }
 
 func (h *Handler) RequestAnthropicToken(c *gin.Context) {
@@ -779,6 +785,86 @@ func (h *Handler) RequestQoderToken(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"status": "ok",
 		"url":    deviceFlow.VerificationURIComplete,
+		"state":  state,
+	})
+}
+
+// RequestCodeBuddyToken starts CodeBuddy's browser authorization flow and
+// persists the resulting credential after the user approves the login.
+func (h *Handler) RequestCodeBuddyToken(c *gin.Context) {
+	h.requestCodeBuddyToken(c, codebuddyauth.NewCodeBuddyAuth(h.cfg))
+}
+
+func (h *Handler) requestCodeBuddyToken(c *gin.Context, authService codeBuddyOAuthService) {
+	ctx := PopulateAuthContext(context.Background(), c)
+	authState, err := authService.FetchAuthState(ctx)
+	if err != nil {
+		log.Errorf("failed to initialize CodeBuddy authentication: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to initialize CodeBuddy authentication"})
+		return
+	}
+
+	state := strings.TrimSpace(authState.State)
+	authURL := strings.TrimSpace(authState.AuthURL)
+	if state == "" || authURL == "" {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "invalid CodeBuddy authentication response"})
+		return
+	}
+	if errState := ValidateOAuthState(state); errState != nil {
+		log.WithError(errState).Error("CodeBuddy returned an invalid OAuth state")
+		c.JSON(http.StatusBadGateway, gin.H{"error": "invalid CodeBuddy authentication state"})
+		return
+	}
+
+	RegisterOAuthSession(state, "codebuddy")
+	pollCtx, cancelPoll := context.WithCancel(ctx)
+	go watchOAuthSessionCancel(pollCtx, cancelPoll, state, "codebuddy")
+	go func() {
+		defer cancelPoll()
+		storage, errPoll := authService.PollForToken(pollCtx, state)
+		if errPoll != nil {
+			if !IsOAuthSessionPending(state, "codebuddy") {
+				return
+			}
+			SetOAuthSessionError(state, "Authentication failed")
+			log.Errorf("CodeBuddy authentication failed: %v", errPoll)
+			return
+		}
+		if errGuard := guardOAuthSessionPendingForSave(state, "codebuddy"); errGuard != nil {
+			return
+		}
+
+		userID := strings.TrimSpace(storage.UserID)
+		if userID == "" {
+			userID = fmt.Sprintf("user-%d", time.Now().UnixMilli())
+		}
+		fileName := fmt.Sprintf("codebuddy-%s.json", userID)
+		record := &coreauth.Auth{
+			ID:       fileName,
+			Provider: "codebuddy",
+			FileName: fileName,
+			Label:    userID,
+			Storage:  storage,
+			Metadata: map[string]any{
+				"access_token":  storage.AccessToken,
+				"refresh_token": storage.RefreshToken,
+				"user_id":       storage.UserID,
+				"domain":        storage.Domain,
+				"expires_in":    storage.ExpiresIn,
+			},
+		}
+		if _, errSave := h.saveTokenRecord(pollCtx, record); errSave != nil {
+			SetOAuthSessionError(state, "Failed to save authentication tokens")
+			log.Errorf("failed to save CodeBuddy authentication tokens: %v", errSave)
+			return
+		}
+
+		CompleteOAuthSession(state)
+	}()
+
+	c.JSON(http.StatusOK, gin.H{
+		"status": "ok",
+		"url":    authURL,
 		"state":  state,
 	})
 }
