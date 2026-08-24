@@ -519,10 +519,26 @@ func renderOpenAIToolCalls(raw any) string {
 		}
 		function, _ := call["function"].(map[string]any)
 		name, _ := function["name"].(string)
-		arguments, _ := function["arguments"].(string)
-		if name != "" {
-			parts = append(parts, fmt.Sprintf("[Called tool: %s]\n%s", name, arguments))
+		if name == "" {
+			continue
 		}
+		arguments, _ := function["arguments"].(string)
+		arguments = strings.TrimSpace(arguments)
+		if arguments == "" {
+			arguments = "{}"
+		}
+		var argumentValue any
+		if err := json.Unmarshal([]byte(arguments), &argumentValue); err != nil {
+			argumentValue = map[string]any{}
+		}
+		payload, err := json.Marshal(map[string]any{
+			"name":      name,
+			"arguments": argumentValue,
+		})
+		if err != nil {
+			continue
+		}
+		parts = append(parts, traeToolOpenTag+"\n"+string(payload)+"\n"+traeToolCloseTag)
 	}
 	return strings.Join(parts, "\n\n")
 }

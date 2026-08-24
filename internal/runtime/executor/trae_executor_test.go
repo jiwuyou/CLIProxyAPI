@@ -149,6 +149,123 @@ func TestCollectTraeIDESSEAppendsOutputChunks(t *testing.T) {
 	}
 }
 
+func TestRenderOpenAIToolCallsRoundTripsThroughParser(t *testing.T) {
+	rendered := renderOpenAIToolCalls([]any{
+		map[string]any{
+			"id":   "call-1",
+			"type": "function",
+			"function": map[string]any{
+				"name":      "bash",
+				"arguments": `{"command":"pwd"}`,
+			},
+		},
+	})
+	if strings.Contains(rendered, "[Called tool:") {
+		t.Fatalf("legacy tool-call syntax leaked into history: %s", rendered)
+	}
+	if !strings.Contains(rendered, traeToolOpenTag) || !strings.Contains(rendered, traeToolCloseTag) {
+		t.Fatalf("canonical tool-call tags missing: %s", rendered)
+	}
+	text, calls := parseTraeToolCalls(rendered)
+	if text != "" || len(calls) != 1 {
+		t.Fatalf("round trip produced text %q and calls %#v", text, calls)
+	}
+	if calls[0].Name != "bash" {
+		t.Fatalf("tool name = %q, want bash", calls[0].Name)
+	}
+	var arguments map[string]any
+	if err := json.Unmarshal([]byte(calls[0].Arguments), &arguments); err != nil {
+		t.Fatal(err)
+	}
+	if arguments["command"] != "pwd" {
+		t.Fatalf("arguments = %#v", arguments)
+	}
+}
+
+func TestRenderOpenAIToolCallsRoundTripsMultipleCalls(t *testing.T) {
+	rendered := renderOpenAIToolCalls([]any{
+		map[string]any{"function": map[string]any{"name": "bash", "arguments": `{"command":"pwd"}`}},
+		map[string]any{"function": map[string]any{"name": "read", "arguments": `{"path":"README.md"}`}},
+	})
+	text, calls := parseTraeToolCalls(rendered)
+	if text != "" || len(calls) != 2 {
+		t.Fatalf("round trip produced text %q and calls %#v; rendered=%s", text, calls, rendered)
+	}
+	if calls[0].Name != "bash" || calls[1].Name != "read" {
+		t.Fatalf("tool order or names changed: %#v", calls)
+	}
+	if strings.Count(rendered, traeToolOpenTag) != 2 || strings.Contains(rendered, "[Called tool:") {
+		t.Fatalf("unexpected rendered history: %s", rendered)
+	}
+}
+
+func TestTraeMultiTurnToolCallsRemainStructured(t *testing.T) {
+	var root map[string]any
+	if err := json.Unmarshal([]byte(`{
+		"messages":[
+			{"role":"user","content":"检查当前目录"},
+			{"role":"assistant","content":"我来检查。","tool_calls":[{"id":"call-1","type":"function","function":{"name":"bash","arguments":"{\\"command\\":\\"pwd\\"}"}}]},
+			{"role":"tool","tool_call_id":"call-1","name":"bash","content":"/root/CLIProxyAPI"},
+			{"role":"user","content":"继续查看 Git 状态"}
+		],
+		"tools":[{"type":"function","function":{"name":"bash","description":"Execute a command","parameters":{"type":"object","properties":{"command":{"type":"string"}}}}}]
+	}`), &root); err != nil {
+		t.Fatal(err)
+	}
+	messages, err := buildTraeMessages(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(messages) != 5 {
+		t.Fatalf("messages length = %d, want 5: %#v", len(messages), messages)
+	}
+	assistantContent := flattenTraeContent(messages[2]["content"])
+	if strings.Contains(assistantContent, "[Called tool:") {
+		t.Fatalf("legacy tool-call syntax leaked into assistant history: %s", assistantContent)
+	}
+	historyText, historyCalls := parseTraeToolCalls(assistantContent)
+	if historyText != "我来检查。" || len(historyCalls) != 1 || historyCalls[0].Name != "bash" {
+		t.Fatalf("historical tool call did not round trip: text=%q calls=%#v content=%s", historyText, historyCalls, assistantContent)
+	}
+	toolResult := flattenTraeContent(messages[3]["content"])
+	if !strings.Contains(toolResult, "[Tool Result: bash]") || !strings.Contains(toolResult, "/root/CLIProxyAPI") {
+		t.Fatalf("tool result order or content changed: %s", toolResult)
+	}
+
+	sse := strings.Join([]string{
+		"event: output",
+		`data:{"response":"<tool_call>\n{\"name\":\"bash\",\"arguments\":{\"command\":\"git status --short\"}}\n</tool_call>"}`,
+		"",
+		"event: done",
+		`data:{"finish_reason":"stop"}`,
+		"",
+	}, "\n")
+	collected, err := collectTraeSSE(strings.NewReader(sse), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _, err := buildTraeOpenAIResponse(collected, "DeepSeek-V4-Pro", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var response map[string]any
+	if err = json.Unmarshal(raw, &response); err != nil {
+		t.Fatal(err)
+	}
+	choice := response["choices"].([]any)[0].(map[string]any)
+	if choice["finish_reason"] != "tool_calls" {
+		t.Fatalf("finish_reason = %#v, response=%s", choice["finish_reason"], raw)
+	}
+	message := choice["message"].(map[string]any)
+	if message["content"] != "" {
+		t.Fatalf("tool markup leaked into message content: %#v", message["content"])
+	}
+	function := message["tool_calls"].([]any)[0].(map[string]any)["function"].(map[string]any)
+	if function["name"] != "bash" || function["arguments"] != `{"command":"git status --short"}` {
+		t.Fatalf("unexpected second-turn tool call: %#v", function)
+	}
+}
+
 func TestApplyTraeCLIHeaders(t *testing.T) {
 	req, err := http.NewRequest(http.MethodPost, "https://example.com/chat", nil)
 	if err != nil {
